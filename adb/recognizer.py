@@ -56,24 +56,29 @@ Return a JSON object with the cards in each row:
 Use the same card code format (rank + suit). Use "??" for unclear cards.
 Only include rows that have cards. Return ONLY the JSON, no other text."""
 
-RECOGNIZE_ALL_PROMPT = """Look at this poker game screenshot from an Open Face Chinese Poker (Pineapple) game.
+RECOGNIZE_ALL_PROMPT = """Look at this Open Face Chinese Poker (Pineapple) screenshot.
+The screen is split into two areas:
+1. OPPONENT (Top Half): Visible face-up cards here are "dead cards".
+2. PLAYER (Bottom Half):
+   - HAND: New cards dealt at the very bottom (3 or 5 cards).
+   - BOARD: Player's 3 rows (Front/Middle/Back) above the hand.
 
-Identify:
-1. Cards in the player's HAND (newly dealt cards, usually at the bottom)
-2. Cards already placed on the player's BOARD (3 rows: front/middle/back)
+Identify card codes (Rank + Suit, e.g., Ah, Td, 2s).
+- Rank: A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2
+- Suit: h, d, c, s
 
 Return a JSON object:
 {
-  "hand": ["Ah", "Kc", "Td"],
-  "board": {
+  "hand": ["Ah", "Kc", "Td"],       // Player's new cards (bottom)
+  "board": {                         // Player's placed cards
     "front": [],
     "middle": [],
     "back": []
-  }
+  },
+  "opponent": ["Ks", "Qs", "Js"]     // All visible cards in TOP half
 }
 
-Card format: 2 chars, rank (A/K/Q/J/T/9-2) + suit (h/d/c/s).
-Use "??" for unclear cards. Return ONLY JSON, no other text."""
+Use "??" for unclear cards. Return ONLY JSON."""
 
 
 # ---------------------------------------------------------------------------
@@ -88,12 +93,20 @@ def recognize_cards_from_image(
     """Send an image to LLM vision API and parse card recognition results.
 
     Returns parsed JSON response from the LLM.
+    Also saves debug artifacts (image, prompt, response) to current dir.
     """
     cfg = config or VisionConfig()
     start = time.time()
 
+    # Save debug image
+    image.save("debug_last_scan.png")
+
     # Encode image to base64 PNG
     img_b64 = _image_to_base64(image, max_size=1024)
+
+    # Save debug prompt
+    with open("debug_last_prompt.txt", "w", encoding="utf-8") as f:
+        f.write(prompt)
 
     # Call LLM API based on provider
     if cfg.provider == "ollama":
@@ -103,8 +116,12 @@ def recognize_cards_from_image(
     else:
         raise ValueError(f"Unsupported provider: {cfg.provider}")
 
+    # Save debug response
+    with open("debug_last_result.txt", "w", encoding="utf-8") as f:
+        f.write(response_text)
+
     elapsed = time.time() - start
-    print(f"  🔍 Recognition: {elapsed:.2f}s")
+    print(f"  🔍 Recognition: {elapsed:.2f}s (saved debug logs)")
 
     # Parse response
     return _parse_response(response_text)
@@ -164,14 +181,21 @@ def _call_ollama_vision(
     """Call Ollama local vision model via its OpenAI-compatible API."""
     try:
         from openai import OpenAI
+        import httpx
     except ImportError:
         raise ImportError(
             "openai package required. Install with: pip install openai"
         )
 
+    # Use a custom httpx client with NO proxy to avoid SOCKS proxy issues
+    # when connecting to localhost Ollama server
+    import os
+    os.environ["NO_PROXY"] = os.environ.get("NO_PROXY", "") + ",localhost,127.0.0.1"
+    http_client = httpx.Client(proxy=None)
     client = OpenAI(
         base_url=config.ollama_base_url,
         api_key="ollama",  # Ollama doesn't need a real key
+        http_client=http_client,
     )
 
     response = client.chat.completions.create(

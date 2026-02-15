@@ -56,7 +56,7 @@ class AppLayout:
 class ADBConfig:
     """ADB connection settings."""
     host: str = "127.0.0.1"
-    port: int = 16384  # MuMu default
+    port: int = 5555  # MuMu default
     adb_path: str = ""  # Auto-detected
 
     def __post_init__(self):
@@ -89,7 +89,7 @@ def _find_adb() -> str:
 class VisionConfig:
     """LLM vision API settings."""
     provider: str = "ollama"  # ollama (local, free) or openai (cloud, paid)
-    model: str = "openbmb/minicpm-o4.5"  # Ollama model name
+    model: str = "minicpm-v"  # Ollama model (also try openbmb/minicpm-o4.5)
     api_key: str = ""  # Only needed for OpenAI
     max_tokens: int = 200
     timeout: float = 30.0  # Local models can be slower

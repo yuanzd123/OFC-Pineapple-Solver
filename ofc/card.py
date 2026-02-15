@@ -48,8 +48,12 @@ def card_suit(card: int) -> int:
 def card_from_str(s: str) -> int:
     """Parse a 2-char string like 'Ah', 'Tc', '2d' into a card int.
 
-    Case-insensitive for suits, rank must match RANK_CHARS exactly.
+    Case-insensitive for suits. Handles '10' as 'T'.
     """
+    # Handle "10h" -> "Th"
+    if len(s) == 3 and s.startswith("10"):
+        s = "T" + s[2:]
+
     if len(s) != 2:
         raise ValueError(f"Invalid card string '{s}', must be 2 chars (e.g. 'Ah')")
     rank_ch, suit_ch = s[0].upper(), s[1].lower()

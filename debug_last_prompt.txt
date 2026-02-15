@@ -1,0 +1,23 @@
+Look at this Open Face Chinese Poker (Pineapple) screenshot.
+The screen is split into two areas:
+1. OPPONENT (Top Half): Visible face-up cards here are "dead cards".
+2. PLAYER (Bottom Half):
+   - HAND: New cards dealt at the very bottom (3 or 5 cards).
+   - BOARD: Player's 3 rows (Front/Middle/Back) above the hand.
+
+Identify card codes (Rank + Suit, e.g., Ah, Td, 2s).
+- Rank: A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2
+- Suit: h, d, c, s
+
+Return a JSON object:
+{
+  "hand": ["Ah", "Kc", "Td"],       // Player's new cards (bottom)
+  "board": {                         // Player's placed cards
+    "front": [],
+    "middle": [],
+    "back": []
+  },
+  "opponent": ["Ks", "Qs", "Js"]     // All visible cards in TOP half
+}
+
+Use "??" for unclear cards. Return ONLY JSON.

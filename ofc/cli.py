@@ -114,7 +114,7 @@ class OFCCli:
                 elif cmd == "scan":
                     self._cmd_scan()
                 elif cmd == "save":
-                    self._cmd_save()
+                    self._cmd_save(args)
                 else:
                     print(f"Unknown: '{cmd}'. Type 'help'.")
             except Exception as e:
@@ -287,15 +287,28 @@ class OFCCli:
 
         hand_cards = validate_cards(result.get("hand", []))
         board_data = result.get("board", {})
+        opponent_cards = validate_cards(result.get("opponent", []))
+
+        if board_data:
+            # Flatten/validate board cards to avoid list-in-list errors
+            for row_key in ["front", "middle", "back"]:
+                if row_key in board_data:
+                    board_data[row_key] = validate_cards(board_data[row_key])
 
         print(f"  Recognized hand: {' '.join(hand_cards)}")
         if board_data:
             for row_name, row_cards in board_data.items():
                 if row_cards:
                     print(f"  Recognized {row_name}: {' '.join(row_cards)}")
+        if opponent_cards:
+            print(f"  Recognized opponent (dead): {' '.join(opponent_cards)}")
+            # Add opponent cards to dead cards list
+            self.state.dead_cards.extend(card_from_str(c) for c in opponent_cards)
+
+        print("  (Debug logs saved to: debug_last_scan.png, _prompt.txt, _result.txt)")
 
         if not hand_cards:
-            print("  ⚠️  No cards recognized in hand. Try 'save' to inspect screenshot.")
+            print("  ⚠️  No cards recognized in hand. Check debug_last_scan.png.")
             return
 
         # 4. Auto-apply recognized cards as initial or deal
@@ -340,10 +353,25 @@ class OFCCli:
             print(f"  ⚠️  Expected 5 (initial) or 3 (pineapple) cards, got {len(cards)}")
             self.state = self.history.pop()  # Undo save
 
-    def _cmd_save(self) -> None:
-        """Save a screenshot for debugging/calibration."""
+    def _cmd_save(self, args: list[str]) -> None:
+        """Save a screenshot for debugging/calibration.
+        
+        Usage: save [filename]
+        If no filename provided, saves as screenshot_YYYYMMDD_HHMMSS.png
+        """
         from adb.screen import capture_screenshot, save_screenshot
+        import datetime
+
+        if args:
+            filename = args[0]
+            if not filename.endswith(".png"):
+                filename += ".png"
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"screenshot_{timestamp}.png"
+        
         cfg = self._get_config()
         img = capture_screenshot(cfg.adb)
-        save_screenshot(img, "debug_screenshot.png")
+        save_screenshot(img, filename)
+        print(f"  💾 Saved to {filename}")
 
