@@ -1,0 +1,24 @@
+[project]
+name = "ofc-solver"
+version = "0.1.0"
+description = "Open Face Chinese Poker (Pineapple) Solver with Android Integration"
+requires-python = ">=3.11"
+dependencies = [
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+vision = [
+    "opencv-python>=4.8",
+    "openai>=1.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+ofc = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
