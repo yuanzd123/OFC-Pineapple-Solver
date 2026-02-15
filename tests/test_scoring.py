@@ -136,6 +136,22 @@ class TestTotalRoyalties:
         assert board.is_fouled()
         assert total_royalties(board) == 0
 
+    def test_fouled_front_stronger_than_middle(self):
+        """Regression: pair of Aces in front beats pair of 2s in middle = FOUL."""
+        board = OFCBoard()
+        # Front: pair of Aces (strong)
+        for c in cards_from_str("As Ad 2d"):
+            board.place_card(Row.FRONT, c)
+        # Middle: pair of 2s (weak — weaker than front = FOUL)
+        for c in cards_from_str("2c 5d 4c Th 2h"):
+            board.place_card(Row.MIDDLE, c)
+        # Back: straight (valid back >= middle)
+        for c in cards_from_str("Ah Kh Qh Jh Ts"):
+            board.place_card(Row.BACK, c)
+
+        assert board.is_fouled()
+        assert total_royalties(board) == 0
+
 
 class TestFantasyland:
     def test_qq_front_qualifies(self):

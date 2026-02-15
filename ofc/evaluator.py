@@ -229,6 +229,84 @@ def compare_3(hand_a: Sequence[int], hand_b: Sequence[int]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Cross-row comparison (middle 5-card vs front 3-card)
+# ---------------------------------------------------------------------------
+
+# Map front 3-card classes to equivalent 5-card classes
+_FRONT_TO_5CARD_CLASS = {
+    FRONT_THREE_KIND: HAND_THREE_KIND,
+    FRONT_ONE_PAIR: HAND_ONE_PAIR,
+    FRONT_HIGH_CARD: HAND_HIGH_CARD,
+}
+
+
+def compare_middle_front(middle: Sequence[int], front: Sequence[int]) -> int:
+    """Compare 5-card middle hand vs 3-card front hand for foul check.
+
+    Returns >0 if middle wins (valid), <0 if front wins (foul), 0 if tie.
+    """
+    mid_class, mid_rank = evaluate_5(middle)
+    front_class_3, front_rank = evaluate_3(front)
+    front_class_5 = _FRONT_TO_5CARD_CLASS[front_class_3]
+
+    # Lower class = better. Middle class must be <= front class to be valid.
+    if mid_class < front_class_5:
+        return 1   # middle better class
+    if mid_class > front_class_5:
+        return -1  # front better class = foul
+
+    # Same class — compare rank within class
+    if mid_class == HAND_ONE_PAIR:
+        mid_pair = _extract_pair_rank_5(middle)
+        front_pair = front_rank // 13
+        if mid_pair > front_pair:
+            return 1
+        if mid_pair < front_pair:
+            return -1
+        return 0
+
+    if mid_class == HAND_THREE_KIND:
+        mid_trip = _extract_trip_rank_5(middle)
+        front_trip = front_rank
+        if mid_trip > front_trip:
+            return 1
+        if mid_trip < front_trip:
+            return -1
+        return 0
+
+    if mid_class == HAND_HIGH_CARD:
+        mid_ranks = sorted([card_rank(c) for c in middle], reverse=True)
+        front_ranks = sorted([card_rank(c) for c in front], reverse=True)
+        for mr, fr in zip(mid_ranks, front_ranks):
+            if mr > fr:
+                return 1
+            if mr < fr:
+                return -1
+        return 0
+
+    # Any other middle class (two pair, straight, etc.) always beats front
+    return 1
+
+
+def _extract_pair_rank_5(cards: Sequence[int]) -> int:
+    """Extract the pair rank from a 5-card one-pair hand."""
+    counts = Counter(card_rank(c) for c in cards)
+    for rank, count in counts.items():
+        if count == 2:
+            return rank
+    return 0
+
+
+def _extract_trip_rank_5(cards: Sequence[int]) -> int:
+    """Extract the trips rank from a 5-card three-of-a-kind hand."""
+    counts = Counter(card_rank(c) for c in cards)
+    for rank, count in counts.items():
+        if count == 3:
+            return rank
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -251,3 +329,4 @@ def _rank_with_count(counts: Counter, n: int) -> int:
 def _ranks_with_count(counts: Counter, n: int) -> list[int]:
     """Return all ranks that appear exactly n times."""
     return [rank for rank, count in counts.items() if count == n]
+

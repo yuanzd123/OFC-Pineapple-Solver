@@ -16,7 +16,7 @@ from enum import IntEnum
 from typing import Optional, Sequence
 
 from ofc.card import card_to_pretty, cards_to_pretty, cards_to_str
-from ofc.evaluator import evaluate_3_score, evaluate_5_score
+from ofc.evaluator import compare_middle_front, evaluate_3_score, evaluate_5_score
 
 
 class Row(IntEnum):
@@ -88,30 +88,15 @@ class OFCBoard:
         if not self.is_complete():
             return False
 
+        # Check back >= middle (both 5-card, lower score = better)
         back_score = evaluate_5_score(self.back)
         middle_score = evaluate_5_score(self.middle)
-        front_score = evaluate_3_score(self.front)
-
-        # Lower score = better hand
-        # Back must be >= middle >= front
-        # So back_score <= middle_score (back is at least as good)
-        # We need to compare 5-card vs 3-card scores differently
-        # Actually, we compare: back >= middle (both 5-card), middle >= front
-        # For middle >= front, we can't directly compare since different scales.
-        # In OFC, the constraint is:
-        #   back hand must beat or tie middle hand (both 5-card)
-        #   middle hand must beat or tie front hand
-        # But front is 3-card and middle is 5-card, so the comparison is by
-        # hand type and then kicker. In practice, any 5-card hand >= any 3-card hand.
-        # So we only need to check back >= middle.
-        # Actually NO - the cross-row comparison is by poker hand ranking concept:
-        # e.g., if front has trips, middle must have at least trips.
-        # The actual OFC rule is simpler: back >= middle >= front in hand strength.
-        # Since we use different scales, let's check with unified comparison.
-
-        # Back >= Middle (both 5-card, lower score = better)
         if back_score > middle_score:
             return True  # back is weaker than middle = foul
+
+        # Check middle >= front (5-card vs 3-card cross-row comparison)
+        if compare_middle_front(self.middle, self.front) < 0:
+            return True  # front is stronger than middle = foul
 
         return False
 

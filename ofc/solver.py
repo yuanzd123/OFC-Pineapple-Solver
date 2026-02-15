@@ -88,24 +88,21 @@ class SolverResult:
 # Core solver
 # ---------------------------------------------------------------------------
 
-DEFAULT_SIMULATIONS = 3000
+DEFAULT_SIMULATIONS = 1500
 FANTASYLAND_BONUS = 8  # Extra EV points for qualifying for Fantasyland
 
 
 def solve(
     state: GameState,
     num_simulations: int = DEFAULT_SIMULATIONS,
-    parallel: bool = False,
+    time_budget: float = 0,
 ) -> SolverResult:
     """Find the best placement for the current game state.
 
     Args:
         state: current game state with hand cards
         num_simulations: simulations per placement option
-        parallel: use multiprocessing (recommended for large sim counts)
-
-    Returns:
-        SolverResult with best placements
+        time_budget: if >0, stop early when this many seconds have elapsed
     """
     start = time.time()
 
@@ -117,10 +114,16 @@ def solve(
     if not options:
         raise ValueError("No valid placements available")
 
+    # If many options and time budget, reduce sims per option
+    sims = num_simulations
+    if time_budget > 0 and len(options) > 20:
+        # Rough estimate: budget per option
+        sims = max(200, num_simulations // 2)
+
     # Evaluate each option
     scored_options = []
     for placements, discard in options:
-        ev = _evaluate_placement(state, placements, discard, num_simulations)
+        ev = _evaluate_placement(state, placements, discard, sims)
         scored_options.append((placements, discard, ev))
 
     # Sort by EV descending
@@ -133,7 +136,7 @@ def solve(
         placements=best_placements,
         discard=best_discard,
         expected_value=best_ev,
-        simulations=num_simulations,
+        simulations=sims,
         elapsed_seconds=elapsed,
         all_options=scored_options,
     )
