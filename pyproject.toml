@@ -5,12 +5,12 @@ description = "Open Face Chinese Poker (Pineapple) Solver with Android Integrati
 requires-python = ">=3.11"
 dependencies = [
     "Pillow>=10.0",
+    "openai>=1.0",
 ]
 
 [project.optional-dependencies]
 vision = [
     "opencv-python>=4.8",
-    "openai>=1.0",
 ]
 dev = [
     "pytest>=7.0",

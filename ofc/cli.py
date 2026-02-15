@@ -4,18 +4,8 @@ Semi-auto OFC Pineapple Solver CLI.
 Streamlined for real-time play:
   1. Type 'initial Ah Kh Qh Jh 2c' → solver auto-places best option
   2. Type 'deal Ts 9c 3d' → solver places 2, discards 1
-  3. Repeat until hand is complete
-
-Commands:
-  new           — Start a new hand
-  initial <5c>  — Initial 5 cards (auto-solve + auto-place)
-  deal <3c>     — Pineapple 3 cards (auto-solve + auto-place)
-  dead <cards>  — Mark dead/seen cards
-  board         — Show current board
-  score         — Show royalties
-  undo          — Undo last round
-  help          — Show commands
-  quit          — Exit
+  3. Or use 'scan' to auto-capture from screen via ADB + LLM Vision
+  4. Repeat until hand is complete
 """
 
 from __future__ import annotations
@@ -48,17 +38,26 @@ HELP_TEXT = """
 ┌─────────────────────────────────────────┐
 │       OFC Pineapple Solver              │
 ├─────────────────────────────────────────┤
-│  new            Start new hand          │
+│  Manual Input:                          │
 │  initial <5c>   First 5 cards           │
 │  deal <3c>      Pineapple 3 cards       │
 │  dead <cards>   Mark dead cards         │
-│  board          Show board              │
-│  score          Show royalties          │
-│  undo           Undo last round         │
-│  quit           Exit                    │
+├─────────────────────────────────────────┤
+│  Screen Reading:                        │
+│  connect         Test ADB connection    │
+│  scan            Screenshot → solve     │
+│  save            Save screenshot        │
+├─────────────────────────────────────────┤
+│  General:                               │
+│  new             Start new hand         │
+│  board           Show board             │
+│  score           Show royalties         │
+│  undo            Undo last round        │
+│  quit            Exit                   │
 ├─────────────────────────────────────────┤
 │  Cards: Ah Kc Td 9s 2h                 │
 │  Example: initial Ah Kh Qh Jh 2c       │
+│  Or just type 'scan' to read screen!    │
 └─────────────────────────────────────────┘
 """
 
@@ -66,9 +65,10 @@ HELP_TEXT = """
 class OFCCli:
     """Semi-auto OFC Pineapple solver CLI."""
 
-    def __init__(self) -> None:
+    def __init__(self, config=None) -> None:
         self.state = GameState()
         self.history: list[GameState] = []
+        self._config = config  # adb.config.Config, loaded lazily
 
     def run(self) -> None:
         print("\n🃏 OFC Pineapple Solver (semi-auto)")
@@ -109,6 +109,12 @@ class OFCCli:
                     self._cmd_score()
                 elif cmd == "undo":
                     self._cmd_undo()
+                elif cmd == "connect":
+                    self._cmd_connect()
+                elif cmd == "scan":
+                    self._cmd_scan()
+                elif cmd == "save":
+                    self._cmd_save()
                 else:
                     print(f"Unknown: '{cmd}'. Type 'help'.")
             except Exception as e:
@@ -237,3 +243,107 @@ class OFCCli:
         print("\n" + self.state.board.display())
         if self.state.dead_cards:
             print(f"  Dead: {cards_to_pretty(self.state.dead_cards)}")
+
+    # ------------------------------------------------------------------
+    # Screen reading commands
+    # ------------------------------------------------------------------
+
+    def _get_config(self):
+        """Lazy-load ADB config."""
+        if self._config is None:
+            from adb.config import Config
+            self._config = Config.default()
+        return self._config
+
+    def _cmd_connect(self) -> None:
+        """Test ADB connection."""
+        from adb.screen import check_adb
+        cfg = self._get_config()
+        ok, msg = check_adb(cfg.adb)
+        if ok:
+            print(f"  ✅ {msg}")
+        else:
+            print(f"  ❌ {msg}")
+
+    def _cmd_scan(self) -> None:
+        """Take screenshot, recognize cards via LLM, and auto-solve."""
+        from adb.screen import capture_screenshot, crop_region
+        from adb.recognizer import recognize_all, validate_cards
+
+        cfg = self._get_config()
+
+        # 1. Capture screenshot
+        print("  Scanning screen...")
+        img = capture_screenshot(cfg.adb)
+
+        # 2. Crop to relevant region if configured
+        if cfg.layout.hand_region:
+            crop_img = crop_region(img, cfg.layout.hand_region)
+        else:
+            crop_img = img  # Send full screen
+
+        # 3. Recognize cards via LLM
+        result = recognize_all(crop_img, cfg.vision)
+
+        hand_cards = validate_cards(result.get("hand", []))
+        board_data = result.get("board", {})
+
+        print(f"  Recognized hand: {' '.join(hand_cards)}")
+        if board_data:
+            for row_name, row_cards in board_data.items():
+                if row_cards:
+                    print(f"  Recognized {row_name}: {' '.join(row_cards)}")
+
+        if not hand_cards:
+            print("  ⚠️  No cards recognized in hand. Try 'save' to inspect screenshot.")
+            return
+
+        # 4. Auto-apply recognized cards as initial or deal
+        self._save_state()
+        cards = cards_from_str(" ".join(hand_cards))
+
+        if len(cards) == 5 and self.state.board.total_cards() == 0:
+            # Initial deal
+            self.state.hand = cards
+            self.state.round_num = 0
+            print(f"  Hand: {cards_to_pretty(cards)}")
+            print(f"  Solving ({INITIAL_SIMS} sims)...", end=" ", flush=True)
+            solve_result = solve(self.state, num_simulations=INITIAL_SIMS)
+            print(f"done in {solve_result.elapsed_seconds:.1f}s")
+            for p in solve_result.placements:
+                self.state.board.place_card(p.row, p.card)
+            self.state.hand = []
+            self.state.round_num = 1
+            self._show_recommendation(solve_result)
+            self._show_board()
+
+        elif len(cards) == 3:
+            # Pineapple deal
+            self.state.hand = cards
+            if self.state.round_num == 0:
+                self.state.round_num = 1
+            print(f"  Deal: {cards_to_pretty(cards)}")
+            print(f"  Solving ({PINEAPPLE_SIMS} sims)...", end=" ", flush=True)
+            solve_result = solve(self.state, num_simulations=PINEAPPLE_SIMS)
+            print(f"done in {solve_result.elapsed_seconds:.1f}s")
+            for p in solve_result.placements:
+                self.state.board.place_card(p.row, p.card)
+            if solve_result.discard is not None:
+                self.state.dead_cards.append(solve_result.discard)
+            self.state.hand = []
+            self.state.round_num += 1
+            self._show_recommendation(solve_result)
+            self._show_board()
+            self._cmd_score()
+
+        else:
+            print(f"  ⚠️  Expected 5 (initial) or 3 (pineapple) cards, got {len(cards)}")
+            self.state = self.history.pop()  # Undo save
+
+    def _cmd_save(self) -> None:
+        """Save a screenshot for debugging/calibration."""
+        from adb.screen import capture_screenshot, save_screenshot
+        cfg = self._get_config()
+        img = capture_screenshot(cfg.adb)
+        save_screenshot(img, "debug_screenshot.png")
+
