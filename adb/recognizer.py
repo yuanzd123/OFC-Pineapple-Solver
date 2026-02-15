@@ -1,7 +1,11 @@
 """
 Card recognition using LLM Vision API.
 
-Sends cropped screenshot regions to GPT-4o (or compatible model) and
+Supports:
+  - Ollama (local, free) — default, uses MiniCPM-o 4.5
+  - OpenAI (cloud, paid) — GPT-4o fallback
+
+Sends cropped screenshot regions to the vision model and
 parses the response into card codes (e.g., 'Ah', 'Kc', 'Td').
 """
 
@@ -91,8 +95,10 @@ def recognize_cards_from_image(
     # Encode image to base64 PNG
     img_b64 = _image_to_base64(image, max_size=1024)
 
-    # Call LLM API
-    if cfg.provider == "openai":
+    # Call LLM API based on provider
+    if cfg.provider == "ollama":
+        response_text = _call_ollama_vision(img_b64, prompt, cfg)
+    elif cfg.provider == "openai":
         response_text = _call_openai_vision(img_b64, prompt, cfg)
     else:
         raise ValueError(f"Unsupported provider: {cfg.provider}")
@@ -149,6 +155,47 @@ def validate_cards(cards: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # LLM API calls
 # ---------------------------------------------------------------------------
+
+def _call_ollama_vision(
+    img_b64: str,
+    prompt: str,
+    config: VisionConfig,
+) -> str:
+    """Call Ollama local vision model via its OpenAI-compatible API."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError(
+            "openai package required. Install with: pip install openai"
+        )
+
+    client = OpenAI(
+        base_url=config.ollama_base_url,
+        api_key="ollama",  # Ollama doesn't need a real key
+    )
+
+    response = client.chat.completions.create(
+        model=config.model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{img_b64}",
+                        },
+                    },
+                ],
+            }
+        ],
+        max_tokens=config.max_tokens,
+        timeout=config.timeout,
+    )
+
+    return response.choices[0].message.content.strip()
+
 
 def _call_openai_vision(
     img_b64: str,

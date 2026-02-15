@@ -57,24 +57,46 @@ class ADBConfig:
     """ADB connection settings."""
     host: str = "127.0.0.1"
     port: int = 16384  # MuMu default
-    adb_path: str = "adb"  # Use system adb
+    adb_path: str = ""  # Auto-detected
+
+    def __post_init__(self):
+        if not self.adb_path:
+            self.adb_path = _find_adb()
 
     @property
     def device_address(self) -> str:
         return f"{self.host}:{self.port}"
 
 
+def _find_adb() -> str:
+    """Find ADB binary — check MuMu bundled, then system PATH."""
+    import shutil
+    # MuMu Player's bundled ADB
+    mumu_adb = (
+        "/Applications/MuMuPlayer.app/Contents/MacOS/"
+        "MuMuEmulator.app/Contents/MacOS/tools/adb"
+    )
+    if os.path.isfile(mumu_adb):
+        return mumu_adb
+    # System PATH
+    sys_adb = shutil.which("adb")
+    if sys_adb:
+        return sys_adb
+    return "adb"  # Fallback, will error on use
+
+
 @dataclass
 class VisionConfig:
     """LLM vision API settings."""
-    provider: str = "openai"  # openai or anthropic
-    model: str = "gpt-4o"
-    api_key: str = ""  # Set via env var OPENAI_API_KEY
+    provider: str = "ollama"  # ollama (local, free) or openai (cloud, paid)
+    model: str = "openbmb/minicpm-o4.5"  # Ollama model name
+    api_key: str = ""  # Only needed for OpenAI
     max_tokens: int = 200
-    timeout: float = 5.0  # seconds
+    timeout: float = 30.0  # Local models can be slower
+    ollama_base_url: str = "http://localhost:11434/v1"
 
     def get_api_key(self) -> str:
-        """Get API key from config or environment."""
+        """Get API key from config or environment (OpenAI only)."""
         if self.api_key:
             return self.api_key
         env_key = os.environ.get("OPENAI_API_KEY", "")
